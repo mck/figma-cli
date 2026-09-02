@@ -1,0 +1,5 @@
+knobs:
+  pad: [8, 16, 24]
+  intent: [default, compact, cozy]
+layout: grid
+gap: 40

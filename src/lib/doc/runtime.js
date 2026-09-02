@@ -64,10 +64,16 @@ export async function applyDoc(ir, opts) {
     if (matches.length === 0) throw new Error('Unknown variable var:' + raw);
     return matches[0];
   }
-
-  function boundPaint(variable) {
+  function boundPaint(variable, node) {
+    let color = { r: 0.09, g: 0.09, b: 0.09 };
+    try {
+      const resolved = variable.resolveForConsumer(node);
+      if (resolved && resolved.value && typeof resolved.value.r === 'number') {
+        color = { r: resolved.value.r, g: resolved.value.g, b: resolved.value.b };
+      }
+    } catch (_) { /* alias not resolvable yet */ }
     return figma.variables.setBoundVariableForPaint(
-      { type: 'SOLID', color: { r: 0.5, g: 0.5, b: 0.5 } },
+      { type: 'SOLID', color: color },
       'color',
       variable
     );
@@ -89,7 +95,7 @@ export async function applyDoc(ir, opts) {
   function applyPaint(node, field, paint, variables, collections, pin) {
     if (!paint) return;
     let value;
-    if (paint.kind === 'var') value = [boundPaint(lookupVar(variables, collections, paint.ref, pin))];
+    if (paint.kind === 'var') value = [boundPaint(lookupVar(variables, collections, paint.ref, pin), node)];
     else if (paint.kind === 'hex') value = [solidPaint(paint.hex)];
     else throw new Error('Invalid paint on ' + field);
     if (field === 'fill') {

@@ -42,22 +42,24 @@ export async function applyDoc(ir, opts) {
     const raw = String(ref);
     let collectionName = pin || null;
     let name = raw;
+    const colNames = collections.map((c) => c.name.toLowerCase());
     if (raw.includes(':') && !raw.startsWith('http')) {
       const idx = raw.indexOf(':');
       collectionName = raw.slice(0, idx);
       name = raw.slice(idx + 1);
     } else if (raw.includes('/')) {
       const idx = raw.indexOf('/');
-      collectionName = raw.slice(0, idx);
-      name = raw.slice(idx + 1);
+      const head = raw.slice(0, idx).toLowerCase();
+      if (colNames.includes(head)) {
+        collectionName = raw.slice(0, idx);
+        name = raw.slice(idx + 1);
+      }
     }
-    const matches = variables.filter((v) => v.name === name || v.name.endsWith('/' + name));
+    let matches = variables.filter((v) => v.name === name || v.name.endsWith('/' + name));
     if (collectionName) {
       const col = collections.find((c) => c.name.toLowerCase() === collectionName.toLowerCase());
       if (!col) throw new Error('Unknown collection "' + collectionName + '" for var:' + raw);
-      const hit = matches.find((v) => v.variableCollectionId === col.id);
-      if (!hit) throw new Error('Unknown variable var:' + raw);
-      return hit;
+      matches = matches.filter((v) => v.variableCollectionId === col.id);
     }
     if (matches.length === 0) throw new Error('Unknown variable var:' + raw);
     return matches[0];
@@ -161,17 +163,17 @@ export async function applyDoc(ir, opts) {
     }
   }
 
+  const fontCache = new Map();
   async function loadFont(family, style) {
-    const candidates = [
-      { family: family || 'Inter', style: style || 'Regular' },
-      { family: family || 'Inter', style: 'Regular' },
-      { family: 'Inter', style: 'Regular' },
-      { family: 'Roboto', style: 'Regular' },
-    ];
+    const want = { family: family || 'Inter', style: style || 'Regular' };
+    const key = want.family + '|' + want.style;
+    if (fontCache.has(key)) return fontCache.get(key);
+    const candidates = [want, { family: want.family, style: 'Regular' }, { family: 'Inter', style: 'Regular' }];
     let last = null;
     for (const font of candidates) {
       try {
         await figma.loadFontAsync(font);
+        fontCache.set(key, font);
         return font;
       } catch (e) {
         last = e;
@@ -330,6 +332,14 @@ export async function applyDoc(ir, opts) {
   const byKey = new Map();
   indexByKey(figma.currentPage, byKey);
   const diff = !!(opts && opts.diff);
+  for (const style of ['Regular', 'Medium', 'Semi Bold', 'Bold']) {
+    try {
+      const font = { family: 'Inter', style };
+      await figma.loadFontAsync(font);
+      fontCache.set('Inter|' + style, font);
+    } catch (_) { /* style not installed */ }
+  }
+
 
   for (const irNode of ir.nodes) {
     try {
@@ -368,20 +378,30 @@ export async function applyDoc(ir, opts) {
 }
 
 export async function decompileNode(rootId, scope) {
-  const NS = 'figma-cli';
   const KEY = 'docKey';
+  const variables = await figma.variables.getLocalVariablesAsync();
+  const byId = new Map(variables.map((v) => [v.id, v]));
+
+  function varRefFromId(id) {
+    if (!id) return null;
+    const v = byId.get(id);
+    return v ? 'var:' + v.name : null;
+  }
 
   function paintOf(node, field) {
     const paints = field === 'stroke' ? node.strokes : node.fills;
     if (!paints || paints === figma.mixed || !paints.length) return undefined;
     const p = paints[0];
-    const bound = node.boundVariables && (field === 'stroke' ? node.boundVariables.strokes : node.boundVariables.fills);
-    if (bound && bound[0] && bound[0].color) {
-      return 'var:' + bound[0].color.id;
-    }
+    try {
+      const bound = node.boundVariables && (field === 'stroke' ? node.boundVariables.strokes : node.boundVariables.fills);
+      const bid = bound && bound[0] && (bound[0].id || (bound[0].color && bound[0].color.id));
+      const named = varRefFromId(bid);
+      if (named) return named;
+    } catch (_) { /* */ }
     try {
       const b = p.boundVariables && p.boundVariables.color;
-      if (b) return 'var-id:' + b.id;
+      const named = varRefFromId(b && b.id);
+      if (named) return named;
     } catch (_) { /* */ }
     if (p.type === 'SOLID' && p.color) {
       const hex = '#' + [p.color.r, p.color.g, p.color.b].map((c) => {

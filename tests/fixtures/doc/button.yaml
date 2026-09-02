@@ -15,11 +15,11 @@ children:
     gap: 6
     padding: $pad
     radius: $radius
-    fill: var:primary
+    fill: var:color/primary
     children:
       - name: Label
         type: text
         content: Default
         fontSize: 14
         fontWeight: 500
-        fill: var:primary-foreground
+        fill: var:color/primary/foreground

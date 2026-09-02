@@ -5,6 +5,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import {
   program,
   checkConnection,
+  daemonExec,
   figmaEvalSync,
 } from '../lib/cli-core.js';
 import { compileDoc, compileDocFile } from '../lib/doc/compile.js';
@@ -45,7 +46,7 @@ program
       collection: options.collection,
       diff: !options.create,
     });
-    const result = figmaEvalSync(script);
+    const result = await daemonExec('eval', { code: script }, 120000);
     if (result && typeof result === 'object') {
       result.compiledNodes = ir.nodes.length;
     }
@@ -113,7 +114,7 @@ program
       collection: options.collection,
       diff: true,
     });
-    const result = figmaEvalSync(script);
+    const result = await daemonExec('eval', { code: script }, 120000);
     if (result && typeof result === 'object') {
       result.variants = variantCount(sweep);
       result.compiledNodes = ir.nodes.length;

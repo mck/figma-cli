@@ -413,7 +413,7 @@ async function handleRequest(req, res) {
 
           switch (action) {
             case 'eval':
-              result = await execWithTimeout(() => executeEval(code));
+              result = await execWithTimeout(() => executeEval(code), 120000);
               break;
             case 'render': {
               // Parse JSX to code, then execute via unified eval (works with both CDP and Plugin)

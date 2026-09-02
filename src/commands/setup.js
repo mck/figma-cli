@@ -9,6 +9,7 @@ import { FigmaClient } from '../figma-client.js';
 import * as apiDocs from '../api-docs.js';
 import { isPatched, patchFigma, unpatchFigma, getCdpPort } from '../figma-patch.js';
 import { detectBrowser, startBrowserApp, getBrowserCommand } from '../platform.js';
+import { ensureSidecar, waitForSidecar, DEFAULT_SIDECAR_NAME } from '../lib/sidecar.js';
 import { convert, detectSourceType } from '../code-import/index.js';
 import {
   program,
@@ -606,13 +607,82 @@ async function connectBrowser(config) {
   }
 }
 
+// Sidecar Mode: copy Figma.app to ~/.figma-bridge, patch THE COPY, ad-hoc
+// re-sign, launch with --remote-debugging-port. Never writes the installed
+// app, so macOS App Management is not required. Safe Mode stays the fallback.
+async function connectSidecar(config, options) {
+  console.log(chalk.hex('#4ECDC4')('  Sidecar Mode ') + chalk.gray('(private Figma.app copy, no App Management)\n'));
+
+  if (options.safe || options.browser) {
+    console.log(chalk.red('  Choose one of --sidecar, --safe, or --browser.\n'));
+    return;
+  }
+
+  const name = options.sidecarName || DEFAULT_SIDECAR_NAME;
+  const port = getCdpPort();
+
+  const spinner = ora('Looking for a running sidecar (CDP probe)...').start();
+  let ensured;
+  try {
+    ensured = await ensureSidecar({ name, port });
+    if (ensured.action === 'reused') {
+      spinner.succeed(`Reusing a live Figma session on port ${port}`);
+    } else if (ensured.action === 'created') {
+      spinner.succeed(`Copied, patched, signed, and launched ${ensured.appPath}`);
+    } else {
+      spinner.succeed(`Launched sidecar ${ensured.appPath}`);
+    }
+  } catch (err) {
+    spinner.fail('Sidecar setup failed');
+    console.log(chalk.red('\n  ' + err.message + '\n'));
+    console.log(chalk.gray('  Fallback: ') + chalk.cyan('figma-cli connect --safe') + chalk.gray(' (plugin, no patching)\n'));
+    return;
+  }
+
+  if (ensured.action !== 'reused') {
+    const waitSpinner = ora('Waiting for sidecar CDP...').start();
+    try {
+      await waitForSidecar(port, { timeoutMs: 25000 });
+      waitSpinner.succeed('Sidecar CDP is live');
+    } catch (err) {
+      waitSpinner.warn(err.message);
+      console.log(chalk.gray('\n  Open a design file in the sidecar window, then re-run ') + chalk.cyan('figma-cli connect --sidecar') + chalk.gray('.'));
+      console.log(chalk.gray('  Or fall back to Safe Mode: ') + chalk.cyan('figma-cli connect --safe\n'));
+      return;
+    }
+  }
+
+  config.sidecar = true;
+  config.sidecarName = name;
+  config.browser = false;
+  config.patched = false;
+  saveConfig(config);
+
+  stopDaemon();
+  const daemonSpinner = ora('Starting speed daemon...').start();
+  try {
+    startDaemon(true, 'cdp');
+    await new Promise(r => setTimeout(r, 1500));
+    if (isDaemonRunning()) {
+      daemonSpinner.succeed('Speed daemon running (Sidecar Mode)');
+      console.log(chalk.green('\n  Ready. Installed Figma.app was not modified.\n'));
+    } else {
+      daemonSpinner.warn('Daemon failed to start, commands will be slower');
+    }
+  } catch (e) {
+    daemonSpinner.warn('Daemon failed: ' + e.message);
+  }
+}
+
 // ============ CONNECT ============
 
 program
   .command('connect')
   .description('Connect to Figma Desktop')
   .option('--safe', 'Use Safe Mode (plugin-based, no patching required)')
-  .option('--browser', 'Use Browser Mode (drive Figma in a Chromium browser via CDP — never modifies the Figma app)')
+  .option('--browser', 'Use Browser Mode (drive Figma in a Chromium browser via CDP, never modifies the Figma app)')
+  .option('--sidecar', 'Use Sidecar Mode (copy Figma.app to ~/.figma-bridge, patch the copy, never touch the installed app)')
+  .option('--sidecar-name <name>', 'Sidecar app name under ~/.figma-bridge', 'FigmaDebug')
   .action(async (options) => {
     // Fun welcome message
     console.log(chalk.hex('#FF6B35')('\n  ✨ Hey designer! ') + chalk.white("Don't be afraid of the terminal!"));
@@ -620,6 +690,11 @@ program
 
     const config = loadConfig();
 
+
+    if (options.sidecar) {
+      await connectSidecar(config, options);
+      return;
+    }
     // Browser Mode: CDP to a normal browser — the Figma app is never modified.
     if (options.browser) {
       await connectBrowser(config);

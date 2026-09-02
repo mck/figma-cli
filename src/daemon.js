@@ -235,8 +235,8 @@ async function evalViaPlugin(code, retryCount = 0) {
     const id = ++pluginMsgId;
     const timeout = setTimeout(() => {
       pluginPendingRequests.delete(id);
-      reject(new Error('Plugin execution timeout (25s)'));
-    }, 25000); // 25s timeout to match plugin-side timeout
+      reject(new Error('Plugin execution timeout (120s)'));
+    }, 120000);
 
     pluginPendingRequests.set(id, { resolve, reject, timeout, code, retryCount });
 
@@ -355,6 +355,7 @@ async function handleRequest(req, res) {
       // FIGMA_FILE and rebinds when they diverge — otherwise commands silently
       // hit whichever file happened to be first when the daemon started.
       file: (cdpClient && cdpClient.pageTitle) || null,
+      fileUrl: (cdpClient && cdpClient.pageUrl) || null,
       idleTimeoutMs: IDLE_TIMEOUT_MS
     }));
     return;

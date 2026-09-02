@@ -13,7 +13,7 @@ figma.showUI(__html__, {
 });
 
 // Execute code with auto-return and timeout protection
-async function executeCode(code, timeoutMs = 25000) {
+async function executeCode(code, timeoutMs = 120000) {
   let trimmed = code.trim();
 
   // Don't add return if code already starts with return

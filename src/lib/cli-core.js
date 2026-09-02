@@ -23,6 +23,7 @@ import {
   startFigmaApp, killFigmaApp,
   getFigmaVersion, isFigmaRunning, platformName
 } from '../platform.js';
+import { filePinMatches } from './file-pin.js';
 
 // Fix zsh shell escaping: zsh escapes ! to \! even in single quotes
 function unescapeShell(str) {
@@ -378,25 +379,19 @@ function daemonBoundFile() {
     const body = execSync(`curl -s${tokenHeader} http://localhost:${DAEMON_PORT}/health`, {
       encoding: 'utf8', stdio: 'pipe', timeout: 1000,
     });
-    return JSON.parse(body).file || null;
+    const health = JSON.parse(body);
+    return { title: health.file || null, url: health.fileUrl || null };
   } catch {
-    return null;
+    return { title: null, url: null };
   }
 }
 
-/**
- * FIGMA_FILE pins every command to one open file. The daemon binds its CDP
- * connection ONCE at startup, so a pin set later would be ignored — commands
- * would keep hitting the file that happened to be first. Restart the daemon
- * when the pin and the bound file disagree.
- */
 function daemonPinMismatch() {
   const want = (process.env.FIGMA_FILE || '').trim();
   if (!want) return false;
   const bound = daemonBoundFile();
-  // Unknown binding (daemon just started, plugin mode) → don't churn.
-  if (!bound) return false;
-  return !bound.toLowerCase().includes(want.toLowerCase());
+  if (!bound.title && !bound.url) return false;
+  return !filePinMatches(want, bound.title, bound.url);
 }
 
 async function ensureDaemonRunning(maxWaitMs = 5000) {

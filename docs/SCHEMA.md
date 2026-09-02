@@ -139,9 +139,9 @@ Same contract `render` / `set-batch` already use:
 the stamp default), variable paths, and this syntax block so a fresh agent
 does not have to reconstruct it.
 
-Radius and numeric layout props are **not** `var:`-bindable in this version
-(Figma binds paints and some numeric fields; the compiler errors if a
-non-paint field is given a `var:` string).
+`gap`, `padding`, and `radius` accept `var:` (FLOAT variables, e.g.
+`var:spacing/600`, `var:radius/lg`) via `setBoundVariable`. Width, height,
+and fontSize stay numeric or hug/fill in this version.
 
 ## Stable keys
 

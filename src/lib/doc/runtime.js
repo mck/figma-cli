@@ -92,17 +92,41 @@ export async function applyDoc(ir, opts) {
     };
   }
 
+  function boundColorId(node, field) {
+    const paints = field === 'stroke' ? node.strokes : node.fills;
+    if (!paints || paints === figma.mixed || !paints[0]) return null;
+    const b = paints[0].boundVariables && paints[0].boundVariables.color;
+    return (b && b.id) || null;
+  }
+
   function applyPaint(node, field, paint, variables, collections, pin) {
     if (!paint) return;
     let value;
-    if (paint.kind === 'var') value = [boundPaint(lookupVar(variables, collections, paint.ref, pin), node)];
-    else if (paint.kind === 'hex') value = [solidPaint(paint.hex)];
+    if (paint.kind === 'var') {
+      const v = lookupVar(variables, collections, paint.ref, pin);
+      if (boundColorId(node, field) === v.id) return;
+      value = [boundPaint(v, node)];
+    } else if (paint.kind === 'hex') value = [solidPaint(paint.hex)];
     else throw new Error('Invalid paint on ' + field);
     if (field === 'fill') {
       if (node.type === 'TEXT') node.fills = value;
       else if ('fills' in node) node.fills = value;
     } else if (field === 'stroke' && 'strokes' in node) {
       node.strokes = value;
+    }
+  }
+
+  function applyFloat(node, field, value, variables, collections, pin) {
+    if (value == null || !node) return;
+    try {
+      if (typeof value === 'object' && value.kind === 'var') {
+        const v = lookupVar(variables, collections, value.ref, pin);
+        node.setBoundVariable(field, v);
+        return;
+      }
+      if (typeof value === 'number') node[field] = value;
+    } catch (e) {
+      throw new Error('Cannot bind ' + field + ': ' + e.message);
     }
   }
 
@@ -177,17 +201,17 @@ export async function applyDoc(ir, opts) {
     }
   }
 
-  function applyLayout(node, irNode) {
+  function applyLayout(node, irNode, variables, collections, pin) {
     if (!irNode.layout || !('layoutMode' in node)) return;
     const layout = irNode.layout;
     node.layoutMode = layout.mode;
     if (layout.wrap && 'layoutWrap' in node) node.layoutWrap = 'WRAP';
-    if (irNode.gap != null) node.itemSpacing = irNode.gap;
+    if (irNode.gap != null) applyFloat(node, 'itemSpacing', irNode.gap, variables, collections, pin);
     if (irNode.padding) {
-      node.paddingTop = irNode.padding.top;
-      node.paddingRight = irNode.padding.right;
-      node.paddingBottom = irNode.padding.bottom;
-      node.paddingLeft = irNode.padding.left;
+      applyFloat(node, 'paddingTop', irNode.padding.top, variables, collections, pin);
+      applyFloat(node, 'paddingRight', irNode.padding.right, variables, collections, pin);
+      applyFloat(node, 'paddingBottom', irNode.padding.bottom, variables, collections, pin);
+      applyFloat(node, 'paddingLeft', irNode.padding.left, variables, collections, pin);
     }
     const alignMap = { start: 'MIN', center: 'CENTER', end: 'MAX', baseline: 'BASELINE' };
     const justifyMap = { start: 'MIN', center: 'CENTER', end: 'MAX', between: 'SPACE_BETWEEN' };
@@ -195,8 +219,12 @@ export async function applyDoc(ir, opts) {
     if (irNode.justify && justifyMap[irNode.justify]) node.primaryAxisAlignItems = justifyMap[irNode.justify];
   }
 
-  function applyRadius(node, radius) {
+  function applyRadius(node, radius, variables, collections, pin) {
     if (radius == null || !('cornerRadius' in node)) return;
+    if (typeof radius === 'object' && radius.kind === 'var') {
+      applyFloat(node, 'cornerRadius', radius, variables, collections, pin);
+      return;
+    }
     if (typeof radius === 'number') node.cornerRadius = radius;
     else if (typeof radius === 'object') {
       if ('topLeftCornerRadius' in node) {
@@ -344,9 +372,9 @@ export async function applyDoc(ir, opts) {
     if (irNode.x != null) node.x = irNode.x;
     if (irNode.y != null) node.y = irNode.y;
     if (irNode.clip && 'clipsContent' in node) node.clipsContent = true;
-    applyLayout(node, irNode);
+    applyLayout(node, irNode, variables, collections, pin);
     if (irNode.type !== 'text') applySize(node, irNode);
-    applyRadius(node, irNode.radius);
+    applyRadius(node, irNode.radius, variables, collections, pin);
     if (irNode.strokeWidth != null && 'strokeWeight' in node) node.strokeWeight = irNode.strokeWidth;
     if (irNode.type === 'icon' && irNode.fill) {
       colorizeVectors(node, irNode.fill, variables, collections, pin);

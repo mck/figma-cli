@@ -16,6 +16,14 @@ export const NODE_TYPES = [
 
 export const PAINT_FIELDS = new Set(['fill', 'stroke']);
 
+export const KNOWN_NODE_KEYS = new Set([
+  'name', 'type', 'key', 'id', 'children', 'visible', 'opacity', 'x', 'y',
+  'width', 'height', 'fill', 'stroke', 'strokeWidth', 'radius', 'clip',
+  'layout', 'gap', 'padding', 'align', 'justify', 'content', 'fontFamily',
+  'fontWeight', 'fontSize', 'lineHeight', 'letterSpacing', 'icon', 'size',
+  'src', 'scaleMode', 'component', 'variant',
+]);
+
 const LAYOUT_ALIAS = {
   col: 'vertical',
   column: 'vertical',
@@ -95,25 +103,49 @@ export function normalizeHex(hex) {
   return '#' + h.toLowerCase();
 }
 
+export function parseLength(value, field = 'length') {
+  if (value == null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (value && typeof value === 'object' && value.kind === 'var') return value;
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (s.startsWith('var:')) return { kind: 'var', ref: s.slice(4) };
+    const n = Number(s);
+    if (Number.isFinite(n)) return n;
+  }
+  throw new Error(`Invalid ${field}: ${value}`);
+}
+
 export function parsePadding(value) {
   if (value == null) return null;
+  if (typeof value === 'string' && value.startsWith('var:')) {
+    const one = parseLength(value, 'padding');
+    return { top: one, right: one, bottom: one, left: one };
+  }
   if (typeof value === 'number') return { top: value, right: value, bottom: value, left: value };
   if (Array.isArray(value)) {
     if (value.length === 1) return parsePadding(value[0]);
     if (value.length === 2) {
-      return { top: value[0], right: value[1], bottom: value[0], left: value[1] };
+      const v = parseLength(value[0], 'padding');
+      const h = parseLength(value[1], 'padding');
+      return { top: v, right: h, bottom: v, left: h };
     }
     if (value.length === 4) {
-      return { top: value[0], right: value[1], bottom: value[2], left: value[3] };
+      return {
+        top: parseLength(value[0], 'padding'),
+        right: parseLength(value[1], 'padding'),
+        bottom: parseLength(value[2], 'padding'),
+        left: parseLength(value[3], 'padding'),
+      };
     }
     throw new Error('padding array must be 1, 2, or 4 numbers');
   }
   if (typeof value === 'object') {
     return {
-      top: value.top ?? 0,
-      right: value.right ?? 0,
-      bottom: value.bottom ?? 0,
-      left: value.left ?? 0,
+      top: parseLength(value.top ?? 0, 'padding'),
+      right: parseLength(value.right ?? 0, 'padding'),
+      bottom: parseLength(value.bottom ?? 0, 'padding'),
+      left: parseLength(value.left ?? 0, 'padding'),
     };
   }
   throw new Error('Invalid padding');
@@ -176,11 +208,15 @@ export function validateNode(node, path) {
       }
     }
   }
-  for (const numeric of ['width', 'height', 'gap', 'strokeWidth', 'fontSize', 'size', 'radius']) {
+  for (const numeric of ['width', 'height', 'strokeWidth', 'fontSize', 'size']) {
     const v = node[numeric];
     if (typeof v === 'string' && v.startsWith('var:')) {
-      errors.push(`${path}.${numeric}: var: bindings are paint-only in this version`);
+      errors.push(`${path}.${numeric}: var: bindings are paint/gap/padding/radius only`);
     }
+  }
+  const extra = Object.keys(node).filter((k) => !KNOWN_NODE_KEYS.has(k));
+  if (extra.length && node.type === 'text') {
+    errors.push(`${path}: unquoted comma in content chopped the string. Quote content. Extra keys: ${extra.join(', ')}`);
   }
   if (node.type === 'icon' && !node.icon) {
     errors.push(`${path}: icon nodes require icon: set:name`);
@@ -299,9 +335,9 @@ export function toIr(doc) {
     if (n.fill != null) ir.fill = parsePaint(n.fill);
     if (n.stroke != null) ir.stroke = parsePaint(n.stroke);
     if (n.strokeWidth != null) ir.strokeWidth = n.strokeWidth;
-    if (n.radius != null) ir.radius = n.radius;
+    if (n.radius != null) ir.radius = parseLength(n.radius, 'radius');
     if (n.layout) ir.layout = parseLayout(n.layout);
-    if (n.gap != null) ir.gap = n.gap;
+    if (n.gap != null) ir.gap = parseLength(n.gap, 'gap');
     if (n.padding != null) ir.padding = parsePadding(n.padding);
     if (n.align) ir.align = n.align;
     if (n.justify) ir.justify = n.justify;

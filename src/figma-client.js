@@ -222,7 +222,10 @@ export class FigmaClient {
 
     let page;
     if (pageTitle) {
-      page = pages.find(p => p.title.includes(pageTitle) && isDesignPage(p));
+      page = pages.find(p => isDesignPage(p) && (
+        (p.title && p.title.includes(pageTitle)) ||
+        (p.url && p.url.includes(pageTitle))
+      ));
     } else {
       page = pages.find(isDesignPage);
     }

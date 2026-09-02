@@ -1,6 +1,6 @@
 // Commands: apply, read, context, sweep (agent-speed document protocol)
 import chalk from 'chalk';
-import { readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { stringify as stringifyYaml } from 'yaml';
 import {
   program,
@@ -18,6 +18,7 @@ import {
   variantCount,
 } from '../lib/doc/sweep.js';
 import { buildContextScript, buildDecompileScript } from '../lib/doc/runtime.js';
+import { comparePngBuffers, parseRegion } from '../lib/doc/verify-delta.js';
 
 function printResult(result) {
   const out = result && typeof result === 'object' ? result : { ok: false, error: String(result) };
@@ -35,11 +36,26 @@ function dumpDoc(doc, output, asJson) {
   }
 }
 
+async function screenshotNode(nodeId) {
+  const code = `(async () => {
+    const node = await figma.getNodeByIdAsync(${JSON.stringify(nodeId)});
+    if (!node) return { error: 'Node not found' };
+    if (!('exportAsync' in node)) return { error: 'Node cannot be exported' };
+    const bytes = await node.exportAsync({ format: 'PNG', constraint: { type: 'SCALE', value: 1 } });
+    return { base64: figma.base64Encode(bytes) };
+  })()`;
+  return daemonExec('eval', { code }, 120000);
+}
+
 program
   .command('apply <doc>')
   .description('Compile a Figma Doc in one plugin execution and return a name-to-id map')
   .option('-c, --collection <name>', 'Pin unscoped var:name lookups to this collection')
   .option('--create', 'Always create nodes (skip key upsert)')
+  .option('--ref <png>', 'After apply, compare the top-level frame to this reference PNG')
+  .option('--region <spec>', 'Region x,y,w,h or name:x,y,w,h (repeatable)', (val, memo) => { memo.push(val); return memo; }, [])
+  .option('--heatmap <png>', 'Write a difference heatmap PNG to this path')
+  .option('--threshold <n>', 'Flag regions whose delta is above this value (default 0.02)', '0.02')
   .action(async (docPath, options) => {
     checkConnection();
     const { script, ir } = await compileDocFile(docPath, {
@@ -49,6 +65,37 @@ program
     const result = await daemonExec('eval', { code: script }, 120000);
     if (result && typeof result === 'object') {
       result.compiledNodes = ir.nodes.length;
+    }
+    if (options.ref && result && result.ok) {
+      const top = ir.nodes.find((n) => n.topLevel);
+      const nodeId = top && result.keys && result.keys[top.key];
+      if (!nodeId) {
+        result.delta = { error: 'No top-level node id to verify' };
+      } else if (!existsSync(options.ref)) {
+        result.ok = false;
+        result.delta = { error: 'Reference PNG not found: ' + options.ref };
+      } else {
+        const shot = await screenshotNode(nodeId);
+        if (shot && shot.base64) {
+          const compared = comparePngBuffers(
+            Buffer.from(shot.base64, 'base64'),
+            readFileSync(options.ref),
+            {
+              regions: (options.region || []).map(parseRegion),
+              threshold: parseFloat(options.threshold),
+              heatmap: !!options.heatmap,
+            }
+          );
+          if (options.heatmap && compared.heatmap) {
+            writeFileSync(options.heatmap, compared.heatmap);
+            compared.heatmapPath = options.heatmap;
+          }
+          delete compared.heatmap;
+          result.delta = compared;
+        } else {
+          result.delta = { error: (shot && shot.error) || 'screenshot failed' };
+        }
+      }
     }
     printResult(result);
   });

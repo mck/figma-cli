@@ -1,0 +1,25 @@
+version: 1
+name: button
+knobs:
+  pad: 12
+  radius: 10
+modes:
+  theme: default
+  colorMode: light
+children:
+  - name: Button
+    type: frame
+    layout: horizontal
+    align: center
+    justify: center
+    gap: 6
+    padding: $pad
+    radius: $radius
+    fill: var:primary
+    children:
+      - name: Label
+        type: text
+        content: Default
+        fontSize: 14
+        fontWeight: 500
+        fill: var:primary-foreground

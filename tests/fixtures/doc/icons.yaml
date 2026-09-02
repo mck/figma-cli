@@ -1,0 +1,23 @@
+version: 1
+name: icons
+children:
+  - name: Icon row
+    type: frame
+    layout: horizontal
+    gap: 8
+    children:
+      - name: Home
+        type: icon
+        icon: lucide:home
+        size: 16
+        fill: var:foreground
+      - name: Dashboard
+        type: icon
+        icon: lucide:layout-dashboard
+        size: 16
+        fill: var:sidebar-accent-foreground
+      - name: Bell
+        type: icon
+        icon: lucide:bell
+        size: 16
+        fill: var:muted-foreground

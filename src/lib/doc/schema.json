@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://figma-cli.local/figma-doc.schema.json",
+  "title": "Figma Doc",
+  "type": "object",
+  "required": ["version"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "name": { "type": "string" },
+    "knobs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "modes": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "collection": { "type": "string" },
+    "root": { "$ref": "#/$defs/node" },
+    "children": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/node" }
+    }
+  },
+  "anyOf": [
+    { "required": ["root"] },
+    { "required": ["children"] }
+  ],
+  "$defs": {
+    "paint": {
+      "oneOf": [
+        { "type": "string", "description": "Hex (#fff) or var: binding" },
+        {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" },
+            "hex": { "type": "string" },
+            "bind": { "type": "string" },
+            "opacity": { "type": "number" }
+          }
+        }
+      ]
+    },
+    "size": {
+      "oneOf": [
+        { "type": "number" },
+        { "type": "string", "enum": ["hug", "fill"] },
+        { "type": "string", "description": "knob reference such as $pad" }
+      ]
+    },
+    "node": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": {
+          "type": "string",
+          "enum": ["frame", "text", "rect", "ellipse", "icon", "image", "instance", "component", "group"]
+        },
+        "key": { "type": "string" },
+        "id": false,
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        },
+        "visible": { "type": "boolean" },
+        "opacity": { "type": "number" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "width": { "$ref": "#/$defs/size" },
+        "height": { "$ref": "#/$defs/size" },
+        "fill": { "$ref": "#/$defs/paint" },
+        "stroke": { "$ref": "#/$defs/paint" },
+        "strokeWidth": { "type": "number" },
+        "radius": {
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string" },
+            {
+              "type": "object",
+              "properties": {
+                "tl": { "type": "number" },
+                "tr": { "type": "number" },
+                "br": { "type": "number" },
+                "bl": { "type": "number" }
+              }
+            }
+          ]
+        },
+        "clip": { "type": "boolean" },
+        "layout": {
+          "type": "string",
+          "enum": ["vertical", "horizontal", "none", "wrap-vertical", "wrap-horizontal", "col", "row", "column"]
+        },
+        "gap": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "padding": {},
+        "align": { "type": "string" },
+        "justify": { "type": "string" },
+        "content": { "type": "string" },
+        "fontFamily": { "type": "string" },
+        "fontWeight": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "fontSize": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "lineHeight": {},
+        "letterSpacing": { "type": "number" },
+        "icon": { "type": "string" },
+        "size": { "oneOf": [{ "type": "number" }, { "type": "string" }] },
+        "src": { "type": "string" },
+        "scaleMode": { "type": "string", "enum": ["FILL", "FIT", "CROP", "TILE"] },
+        "component": { "type": "string" },
+        "variant": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

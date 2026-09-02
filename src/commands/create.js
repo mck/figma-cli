@@ -5,6 +5,7 @@ import {
   program,
   checkConnection,
   daemonExec,
+  figmaEvalSync,
   figmaUse,
   generateFillCode,
   getVarName,
@@ -195,17 +196,22 @@ create
 
     return 'Image created: ' + w + 'x' + h + ' at (' + smartX + ', ${options.y})';
   } catch (e) {
-    return 'Error: ' + e.message;
+    throw new Error('create-image failed: ' + e.message);
   }
 })()
 `;
 
     try {
-      const result = figmaUse(`eval "${code.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`, { silent: true });
+      const result = figmaEvalSync(code);
+      if (typeof result === 'string' && (/^Error:/.test(result) || /create-image failed/.test(result))) {
+        spinner.fail(result);
+        process.exit(1);
+      }
       spinner.succeed('Image created from URL');
-      if (result) console.log(chalk.gray(result.trim()));
+      if (result) console.log(chalk.gray(String(result).trim()));
     } catch (e) {
       spinner.fail('Failed to create image: ' + e.message);
+      process.exit(1);
     }
   });
 

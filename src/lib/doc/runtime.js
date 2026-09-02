@@ -113,22 +113,61 @@ export async function applyDoc(ir, opts) {
   function applySize(node, irNode) {
     const w = irNode.width;
     const h = irNode.height;
+    const isText = irNode.type === 'text' || node.type === 'TEXT';
+
+    if (isText) {
+      try {
+        if (typeof w === 'number') {
+          node.textAutoResize = 'HEIGHT';
+          node.resize(Math.max(w, 1), Math.max(node.height || 1, 1));
+          if ('layoutSizingHorizontal' in node) node.layoutSizingHorizontal = 'FIXED';
+          if ('layoutSizingVertical' in node) node.layoutSizingVertical = 'HUG';
+        } else if (w === 'fill') {
+          node.textAutoResize = 'HEIGHT';
+          if ('layoutSizingHorizontal' in node) node.layoutSizingHorizontal = 'FILL';
+          if ('layoutSizingVertical' in node) node.layoutSizingVertical = 'HUG';
+        } else {
+          node.textAutoResize = 'WIDTH_AND_HEIGHT';
+          if ('layoutSizingHorizontal' in node) node.layoutSizingHorizontal = 'HUG';
+          if ('layoutSizingVertical' in node) node.layoutSizingVertical = 'HUG';
+        }
+        if (h === 'fill' && 'layoutSizingVertical' in node) node.layoutSizingVertical = 'FILL';
+      } catch (_) { /* sizing not supported on this node */ }
+      return;
+    }
+
     if (typeof w === 'number' && typeof h === 'number' && 'resize' in node) {
       node.resize(Math.max(w, 0.01), Math.max(h, 0.01));
     } else if (typeof w === 'number' && 'resize' in node) {
-      node.resize(Math.max(w, 0.01), node.height || 1);
+      node.resize(Math.max(w, 0.01), Math.max(node.height || 1, 1));
     } else if (typeof h === 'number' && 'resize' in node) {
-      node.resize(node.width || 1, Math.max(h, 0.01));
+      node.resize(Math.max(node.width || 1, 1), Math.max(h, 0.01));
     }
-    if ('layoutSizingHorizontal' in node) {
-      if (w === 'fill') node.layoutSizingHorizontal = 'FILL';
-      else if (w === 'hug') node.layoutSizingHorizontal = 'HUG';
-      else if (typeof w === 'number') node.layoutSizingHorizontal = 'FIXED';
-    }
-    if ('layoutSizingVertical' in node) {
-      if (h === 'fill') node.layoutSizingVertical = 'FILL';
-      else if (h === 'hug') node.layoutSizingVertical = 'HUG';
-      else if (typeof h === 'number') node.layoutSizingVertical = 'FIXED';
+
+    try {
+      if ('layoutSizingHorizontal' in node) {
+        if (w === 'fill') node.layoutSizingHorizontal = 'FILL';
+        else if (typeof w === 'number') node.layoutSizingHorizontal = 'FIXED';
+        else node.layoutSizingHorizontal = 'HUG';
+      }
+      if ('layoutSizingVertical' in node) {
+        if (h === 'fill') node.layoutSizingVertical = 'FILL';
+        else if (typeof h === 'number') node.layoutSizingVertical = 'FIXED';
+        else node.layoutSizingVertical = 'HUG';
+      }
+    } catch (_) { /* parent is not auto-layout */ }
+
+    if ('layoutMode' in node && node.layoutMode && node.layoutMode !== 'NONE') {
+      const vertical = node.layoutMode === 'VERTICAL';
+      try {
+        if (vertical) {
+          node.primaryAxisSizingMode = (h === 'fill' || typeof h === 'number') ? 'FIXED' : 'AUTO';
+          node.counterAxisSizingMode = (typeof w === 'number' || w === 'fill') ? 'FIXED' : 'AUTO';
+        } else {
+          node.primaryAxisSizingMode = (w === 'fill' || typeof w === 'number') ? 'FIXED' : 'AUTO';
+          node.counterAxisSizingMode = (typeof h === 'number' || h === 'fill') ? 'FIXED' : 'AUTO';
+        }
+      } catch (_) { /* */ }
     }
   }
 
@@ -300,12 +339,12 @@ export async function applyDoc(ir, opts) {
     if (irNode.y != null) node.y = irNode.y;
     if (irNode.clip && 'clipsContent' in node) node.clipsContent = true;
     applyLayout(node, irNode);
-    applySize(node, irNode);
+    if (irNode.type !== 'text') applySize(node, irNode);
     applyRadius(node, irNode.radius);
     if (irNode.strokeWidth != null && 'strokeWeight' in node) node.strokeWeight = irNode.strokeWidth;
     if (irNode.type === 'icon' && irNode.fill) {
       colorizeVectors(node, irNode.fill, variables, collections, pin);
-    } else if (irNode.type !== 'image') {
+    } else if (irNode.type !== 'image' && irNode.type !== 'text') {
       applyPaint(node, 'fill', irNode.fill, variables, collections, pin);
     }
     applyPaint(node, 'stroke', irNode.stroke, variables, collections, pin);
@@ -322,6 +361,7 @@ export async function applyDoc(ir, opts) {
       if (irNode.textAlign === 'center') node.textAlignHorizontal = 'CENTER';
       else if (irNode.textAlign === 'right') node.textAlignHorizontal = 'RIGHT';
       applyPaint(node, 'fill', irNode.fill, variables, collections, pin);
+      applySize(node, irNode);
     }
     if (isNew && irNode.topLevel) stampModes(node, collections, ir.modes || {});
   }

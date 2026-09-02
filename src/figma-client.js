@@ -1088,7 +1088,7 @@ export class FigmaClient {
     }
 
     // Parse Image elements (self-closing) - creates placeholder rectangle
-    const imageRegex = /<Image\s+([^/]*)\s*\/>/g;
+    const imageRegex = /<Image\s+([^>]*)\/>/g;
     while ((match = imageRegex.exec(childrenStr)) !== null) {
       const idx = match.index;
       const insideFrame = frameRanges.some(r => idx >= r.start && idx < r.end);
@@ -1101,7 +1101,7 @@ export class FigmaClient {
     }
 
     // Parse Icon elements (self-closing) - creates placeholder
-    const iconRegex = /<Icon\s+([^/]*)\s*\/>/g;
+    const iconRegex = /<Icon\s+([^>]*)\/>/g;
     while ((match = iconRegex.exec(childrenStr)) !== null) {
       const idx = match.index;
       const insideFrame = frameRanges.some(r => idx >= r.start && idx < r.end);
@@ -1114,7 +1114,7 @@ export class FigmaClient {
     }
 
     // Parse Instance elements (self-closing) - creates component instance
-    const instanceRegex = /<Instance\s+([^/]*)\s*\/>/g;
+    const instanceRegex = /<Instance\s+([^>]*)\/>/g;
     while ((match = instanceRegex.exec(childrenStr)) !== null) {
       const idx = match.index;
       const insideFrame = frameRanges.some(r => idx >= r.start && idx < r.end);

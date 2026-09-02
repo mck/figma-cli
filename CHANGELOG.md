@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+### New
+
+- **Sidecar Mode (`figma-cli connect --sidecar`).** Copies the installed
+  Figma.app to `~/.figma-bridge/<name>.app` (default `FigmaDebug`), patches
+  THE COPY so `--remote-debugging-port` works, ad-hoc re-signs it
+  (`codesign --force --deep -s -`), and connects over CDP. Never writes the
+  installed app, so macOS App Management is not required. Probes the debug
+  port first and reuses an already-running patched copy. Plugin Safe Mode
+  (`connect --safe`) is unchanged and stays the fallback.
+- **Figma Doc protocol.** `apply <doc>` compiles a named YAML/JSON tree in
+  one plugin execution (auto-layout, text, `var:` fills/strokes, icons,
+  instances, knobs). New top-level frames stamp each collection's default
+  mode (`default`/`light`, overridable via `doc.modes`). Every op reports
+  applied/failed; missing icons, failed images, unknown types, and unknown
+  variables are hard errors. Schema: `docs/SCHEMA.md`.
+- **`read` / desired-state `apply`.** `read [selection|node|page]` emits the
+  same doc format. Re-apply upserts by stable `docKey` plugin data, so
+  reruns patch and do not duplicate.
+- **`context`.** One JSON payload: collections, modes (including stamp
+  defaults), variable paths+types, binding syntax, page/selection.
+- **`verify --ref`.** Numeric per-region delta against a reference PNG,
+  optional heatmap. Agents inspect only regions above `--threshold`.
+- **`sweep <doc> <sweep.yaml>`.** Knob matrix in one apply. `--promote`
+  lifts a cell into the base doc knobs.
+
+- **`create image` and multi-icon `var:` fills.** Image failures throw
+  instead of printing success. Icon/Image JSX parse no longer stops at `/`,
+  so `color="var:collection/name"` and several icons in one render stay
+  intact. The doc compiler batches icons with variable-bound fills.
+
+
 ### Fixed — auto-layout
 
 The recurring "auto-layout is behaving weirdly" reports had one root cause:

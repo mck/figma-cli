@@ -11,6 +11,7 @@ import {
   isDaemonRunning,
   unescapeShell
 } from '../lib/cli-core.js';
+import { comparePngBuffers, parseRegion } from '../lib/doc/verify-delta.js';
 
 // ============ EXPORT ============
 
@@ -192,6 +193,10 @@ program
   .option('--save [path]', 'Custom PNG path (default: /tmp/figma-verify-{id}.png — save is the DEFAULT)')
   .option('--base64', 'Dump the base64 PNG to stdout instead of saving (token-heavy — opt-in only)')
   .option('--measure', 'Also return real (unscaled) node + child dimensions so size bugs are caught by measurement, not just the screenshot')
+  .option('--ref <png>', 'Compare against this reference PNG and return a numeric per-region delta')
+  .option('--region <spec>', 'Region x,y,w,h or name:x,y,w,h (repeatable)', (val, memo) => { memo.push(val); return memo; }, [])
+  .option('--heatmap <png>', 'Write a difference heatmap PNG to this path')
+  .option('--threshold <n>', 'Flag regions whose delta is above this value (default 0.02)', '0.02')
   .action((nodeId, options) => {
     checkConnection();
     const scale = parseFloat(options.scale);
@@ -264,37 +269,46 @@ program
       process.exit(1);
     }
 
-    // Default: save the PNG to disk and return only metadata (lean on tokens).
-    // Dumping the raw base64 into stdout is now opt-in via --base64, because it
-    // lands in the agent's context as raw text (tens of thousands of tokens for
-    // a full frame). Reading the saved PNG back instead enters it as a real image.
-    if (options.base64) {
-      console.log(JSON.stringify({
-        name: result.name,
-        id: result.id,
-        width: result.width,
-        height: result.height,
-        base64: result.base64,
-        ...(result.measure ? { measure: result.measure } : {})
-      }));
-    } else {
+    const buffer = Buffer.from(result.base64, 'base64');
+    let saved = null;
+    if (!options.base64) {
       const safeId = result.id.replace(/:/g, '-');
-      const savePath = typeof options.save === 'string'
+      saved = typeof options.save === 'string'
         ? options.save
         : `/tmp/figma-verify-${safeId}.png`;
-
-      const buffer = Buffer.from(result.base64, 'base64');
-      writeFileSync(savePath, buffer);
-
-      console.log(JSON.stringify({
-        name: result.name,
-        id: result.id,
-        width: result.width,
-        height: result.height,
-        saved: savePath,
-        ...(result.measure ? { measure: result.measure } : {})
-      }));
+      writeFileSync(saved, buffer);
     }
+
+    let delta = null;
+    if (options.ref) {
+      if (!existsSync(options.ref)) {
+        console.error(chalk.red('Reference PNG not found: ' + options.ref));
+        process.exit(1);
+      }
+      const regions = (options.region || []).map(parseRegion);
+      const compared = comparePngBuffers(buffer, readFileSync(options.ref), {
+        regions,
+        threshold: parseFloat(options.threshold),
+        heatmap: !!options.heatmap,
+      });
+      if (options.heatmap && compared.heatmap) {
+        writeFileSync(options.heatmap, compared.heatmap);
+        compared.heatmapPath = options.heatmap;
+      }
+      delete compared.heatmap;
+      delta = compared;
+    }
+
+    console.log(JSON.stringify({
+      name: result.name,
+      id: result.id,
+      width: result.width,
+      height: result.height,
+      ...(saved ? { saved } : {}),
+      ...(options.base64 ? { base64: result.base64 } : {}),
+      ...(result.measure ? { measure: result.measure } : {}),
+      ...(delta ? { delta } : {}),
+    }));
   });
 
 // ============ EVAL ============
